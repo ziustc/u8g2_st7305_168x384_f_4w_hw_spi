@@ -446,8 +446,8 @@ uint8_t u8x8_d_st7305_200x200(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *
       {
         
         u8x8_cad_SendCmd(u8x8, 0x2a);   // column address set
-        u8x8_cad_SendArg(u8x8, 0x16);   // 0x019 for the 122x250 LCD --> 0x016 for the 200x200 display
-        u8x8_cad_SendArg(u8x8, 0x27 );  // 204 pixel for the 200x200 display
+        u8x8_cad_SendArg(u8x8, 0x20);   // 0x019 for the 122x250 LCD --> 0x016 for the 200x200 display
+        u8x8_cad_SendArg(u8x8, 0x27);  // 204 pixel for the 200x200 display
       
         u8x8_cad_SendCmd(u8x8, 0x2b ); 
         u8x8_cad_SendArg(u8x8, y+i); 
@@ -584,32 +584,87 @@ static const u8x8_display_info_t u8x8_st7305_168x384_display_info =
 
 uint8_t u8x8_d_st7305_168x384(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr)
 {
-    switch (msg)
-    {
+  uint16_t x;
+  uint8_t c, i, y;
+  uint8_t *ptr;
+  switch(msg)
+  {
     case U8X8_MSG_DISPLAY_INIT:
-        u8x8_d_helper_display_init(u8x8);
-        u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_168x384_init_seq);
-        break;
+      u8x8_d_helper_display_init(u8x8);
+      u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_168x384_init_seq);    
+      break;
     case U8X8_MSG_DISPLAY_SETUP_MEMORY:
-        u8x8_d_helper_display_setup_memory(u8x8, &u8x8_st7305_168x384_display_info);
-        break;
+      u8x8_d_helper_display_setup_memory(u8x8, &u8x8_st7305_168x384_display_info);
+      break;
     case U8X8_MSG_DISPLAY_SET_POWER_SAVE:
-        if (arg_int == 0)
-            u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_168x384_powersave0_seq);
-        else
-            u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_168x384_powersave1_seq);
-        break;
+      if ( arg_int == 0 )
+	u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_122x250_powersave0_seq);
+      else
+	u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_122x250_powersave1_seq);
+      break;
     case U8X8_MSG_DISPLAY_SET_FLIP_MODE:
-        if (arg_int == 0)
-            u8x8_cad_SendCmd(u8x8, 0x36); /* normal MADCTL */
-        else
-            u8x8_cad_SendCmd(u8x8, 0x36); /* mirrored MADCTL param可调整 */
-        break;
+      if ( arg_int == 0 )
+      {
+	u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_122x250_flip0_seq);
+	u8x8->x_offset = u8x8->display_info->default_x_offset;
+      }
+      else
+      {
+	u8x8_cad_SendSequence(u8x8, u8x8_d_st7305_122x250_flip1_seq);
+	u8x8->x_offset = u8x8->display_info->flipmode_x_offset;
+      }
+      break;
+#ifdef U8X8_WITH_SET_CONTRAST
     case U8X8_MSG_DISPLAY_SET_CONTRAST:
-        /* 可根据手册调节对比度寄存器 */
-        break;
+      u8x8_cad_StartTransfer(u8x8);
+      u8x8_cad_SendCmd(u8x8, 0x081 );
+      u8x8_cad_SendArg(u8x8, arg_int<<2 );	
+      u8x8_cad_SendArg(u8x8, arg_int>>6 );	
+      u8x8_cad_EndTransfer(u8x8);
+      break;
+#endif
+    case U8X8_MSG_DISPLAY_DRAW_TILE:
+      x = ((u8x8_tile_t *)arg_ptr)->x_pos;    
+      x *= 8;
+      x += u8x8->x_offset;
+      y= (((u8x8_tile_t *)arg_ptr)->y_pos);
+      y*=4;
+    
+      y+=0;         // specific for the 168x384 LCD
+
+      u8x8_cad_StartTransfer(u8x8);
+
+      for( i = 0; i < 4; i++ )
+      {
+        
+        u8x8_cad_SendCmd(u8x8, 0x2a);   // column address set
+        u8x8_cad_SendArg(u8x8, 0x17);   // 0x019 for the 122x250 LCD --> 0x016 for the 200x200 display
+        u8x8_cad_SendArg(u8x8, 0x24);  // 204 pixel for the 200x200 display
+      
+        u8x8_cad_SendCmd(u8x8, 0x2b); 
+        u8x8_cad_SendArg(u8x8, y+i); 
+        u8x8_cad_SendArg(u8x8, y+i); 
+        u8x8_cad_SendCmd(u8x8, 0x2c);		// write data 
+      
+        c = ((u8x8_tile_t *)arg_ptr)->cnt;
+        ptr = ((u8x8_tile_t *)arg_ptr)->tile_ptr;
+        
+        ptr += u8x8->display_info->tile_width*i*2;
+        
+        c = (c+2)/3;          // calculate the number of 24 bit blocks to send
+        
+        
+        while( c > 0 )
+        {
+          u8x8_cad_SendData(u8x8, 6, u8x8_st7305_convert_a0(u8x8, ptr)); 	
+          ptr+=3;
+          --c;
+        }
+      }
+      u8x8_cad_EndTransfer(u8x8);
+      break;
     default:
-        return 0;
-    }
-    return 1;
+      return 0;
+  }
+  return 1;
 }
